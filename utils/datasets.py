@@ -223,7 +223,7 @@ def create_dataloader(path, imgsz, batch_size, stride, opt, hyp=None, augment=Fa
 def create_dataloader_rgb_ir(path1, path2,  imgsz, batch_size, stride, opt, hyp=None, augment=False, cache=False, pad=0.0, rect=False,
                       rank=-1, world_size=1, workers=8, image_weights=False, quad=False, prefix='', sampler=None):
     # Make sure only the first process in DDP process the dataset first, and the following others can use the cache
-    with torch_distributed_zero_first(rank):
+    with torch_distributed_zero_first(rank): #True
         dataset = LoadMultiModalImagesAndLabels(path1, path2, imgsz, batch_size,
                                       augment=augment,  # augment images
                                       hyp=hyp,  # augmentation hyperparameters
@@ -518,7 +518,9 @@ class LoadStreams:  # multiple IP or RTSP cameras
 def img2label_paths(img_paths):
     # Define label paths as a function of image paths
     sa, sb = os.sep + 'images' + os.sep, os.sep + 'labels' + os.sep  # /images/, /labels/ substrings
-    return ['txt'.join(x.replace(sa, sb, 1).rsplit(x.split('.')[-1], 1)) for x in img_paths]
+    img_pathsnew = [x[:66] + 'Annotations'+x[ -11:] for x in img_paths]
+
+    return ['txt'.join(x.replace(sa, sb, 1).rsplit(x.split('.')[-1], 1)) for x in img_pathsnew]
 
 
 class LoadImagesAndLabels(Dataset):  # for training/testing
@@ -823,14 +825,14 @@ class LoadMultiModalImagesAndLabels(Dataset):  # for training/testing
     """
     def __init__(self, path_rgb, path_ir, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
                  cache_images=False, single_cls=False, stride=32, pad=0.0, prefix=''):
-        self.img_size = img_size
-        self.augment = augment
-        self.hyp = hyp
-        self.image_weights = image_weights
-        self.rect = False if image_weights else rect
-        self.mosaic = self.augment and not self.rect  # load 4 images at a time into a mosaic (only during training)
+        self.img_size = img_size #640
+        self.augment = augment #true
+        self.hyp = hyp #dict
+        self.image_weights = image_weights #false
+        self.rect = False if image_weights else rect #false
+        self.mosaic = self.augment and not self.rect  # true load 4 images at a time into a mosaic (only during training)
         self.mosaic_border = [-img_size // 2, -img_size // 2]
-        self.stride = stride
+        self.stride = stride #32
         self.path_rgb = path_rgb
         self.path_ir = path_ir
 
@@ -861,16 +863,17 @@ class LoadMultiModalImagesAndLabels(Dataset):  # for training/testing
             f_ir = []
             # -----------------------------  rgb   -----------------------------
             for p_rgb in path_rgb if isinstance(path_rgb, list) else [path_rgb]:
-                p_rgb = Path(p_rgb)  # os-agnostic
+                p_rgb = Path(p_rgb)  # os-agnostic /home/jiahao/PycharmProjects/multispectral-object-detection/LLVIP/visible/train.txt
                 if p_rgb.is_dir():  # dir
                     f_rgb += glob.glob(str(p_rgb / '**' / '*.*'), recursive=True)
                     # f = list(p.rglob('**/*.*'))  # pathlib
-                elif p_rgb.is_file():  # file
+                elif p_rgb.is_file():  # file true
                     with open(p_rgb, 'r') as t:
                         t = t.read().strip().splitlines()
-                        parent = str(p_rgb.parent) + os.sep
-                        f_rgb += [x.replace('./', parent) if x.startswith('./') else x for x in t]  # local to global path
-                        # f += [p.parent / x.lstrip(os.sep) for x in t]  # local to global path (pathlib)
+                        name = p_rgb.name[:-4]
+                        parent = str(p_rgb.parent) + os.sep  # '/home/jiahao/PycharmProjects/multispectral-object-detection/LLVIP/visible/'
+                        # f_rgb += [x.replace('./', parent) if x.startswith('./') else x for x in t]  # local to global path
+                        f_rgb += [parent +name +'/'+ x.lstrip(os.sep) for x in t]  # local to global path (pathlib)
                 else:
                     raise Exception(f'{prefix}{path_rgb} does not exist')
 
@@ -883,10 +886,10 @@ class LoadMultiModalImagesAndLabels(Dataset):  # for training/testing
                     elif p_ir.is_file():  # file
                         with open(p_ir, 'r') as t:
                             t = t.read().strip().splitlines()
+                            name = p_ir.name[:-4]
                             parent = str(p_ir.parent) + os.sep
-                            f_ir += [x.replace('./', parent) if x.startswith('./') else x for x in
-                                      t]  # local to global path
-                            # f += [p.parent / x.lstrip(os.sep) for x in t]  # local to global path (pathlib)
+                            # f_ir += [x.replace('./', parent) if x.startswith('./') else x for x in t]  # local to global path
+                            f_ir += [parent +name +'/'+ x.lstrip(os.sep) for x in t]  # local to global path (pathlib)
                     else:
                         raise Exception(f'{prefix}{p_ir} does not exist')
 
@@ -901,7 +904,7 @@ class LoadMultiModalImagesAndLabels(Dataset):  # for training/testing
 
         # Check cache
         # Check rgb cache
-        self.label_files_rgb = img2label_paths(self.img_files_rgb)  # labels
+        self.label_files_rgb = img2label_paths(self.img_files_rgb)  # labels# no path only names .txt
         # print(self.label_files)
         cache_rgb_path = (p_rgb if p_rgb.is_file() else Path(self.label_files_rgb[0]).parent).with_suffix('.cache')  # cached labels
         if cache_rgb_path.is_file():
